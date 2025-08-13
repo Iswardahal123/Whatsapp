@@ -1,38 +1,31 @@
-const express = require('express');
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
 const fetch = require('node-fetch');
+const qrcode = require('qrcode');
+const express = require('express');
 
-const GOOGLE_API_KEYS = [
-    "AIzaSyA6Zh5GVB24w7bloM99lfgBhANbMeLO1SM",
-    "AIzaSyA6Zh5GVB24w7bloM99lfgBhANbMeLO1SM"
+// Google API keys (multiple)
+const API_KEYS = [
+    "KEY1",
+    "KEY2",
+    "KEY3"
 ];
-let apiIndex = 0;
-
+let currentKeyIndex = 0;
 function getApiKey() {
-    const key = GOOGLE_API_KEYS[apiIndex];
-    apiIndex = (apiIndex + 1) % GOOGLE_API_KEYS.length;
+    const key = API_KEYS[currentKeyIndex];
+    currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
     return key;
 }
 
-// Web server to keep Render alive
 const app = express();
-const PORT = process.env.PORT || 10000;
-app.get('/', (req, res) => res.send('✅ WhatsApp Bot Running!'));
-app.listen(PORT, () => console.log(`🌐 Web server started on port ${PORT}`));
+let qrImageData = null; // QR store karenge
 
-// WhatsApp client setup
 const client = new Client({
-    authStrategy: new LocalAuth(),
-    puppeteer: {
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-    }
+    authStrategy: new LocalAuth()
 });
 
-client.on('qr', qr => {
-    console.log("📌 QR code scan karo:");
-    qrcode.generate(qr, { small: true });
+client.on('qr', async qr => {
+    console.log("📌 QR code ready, image generate ho rahi hai...");
+    qrImageData = await qrcode.toDataURL(qr); // PNG base64
 });
 
 client.on('ready', () => {
@@ -54,7 +47,6 @@ client.on('message', async msg => {
                 })
             }
         );
-
         const data = await response.json();
         let reply = "⚠ Error: Koi reply nahi mila.";
 
@@ -67,6 +59,20 @@ client.on('message', async msg => {
         console.error("❌ Error:", err);
         msg.reply("❌ Reply generate karte waqt error aayi.");
     }
+});
+
+// QR serve karne ka route
+app.get('/', (req, res) => {
+    if (qrImageData) {
+        res.send(`<img src="${qrImageData}" />`);
+    } else {
+        res.send("QR abhi ready nahi hai. Thoda wait karo...");
+    }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`🌐 Web server started on port ${PORT}`);
 });
 
 client.initialize();
