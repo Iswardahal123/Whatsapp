@@ -4,7 +4,7 @@ const fetch = require('node-fetch');
 
 // Yaha apni saari Google API keys add karo
 const API_KEYS = [
-    "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",
+    "AIzaSyA6Zh5GVB24w7bloM99lfgBhANbMeLO1SM",
     "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",
     
 ];
