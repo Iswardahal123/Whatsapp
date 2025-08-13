@@ -2,8 +2,13 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const fetch = require('node-fetch');
+const os = require('os');
+const fs = require('fs');
+const path = require('path');
 
-// Yaha apne multiple Google API keys daal do
+// ---------------------
+// Google API Keys
+// ---------------------
 const GOOGLE_API_KEYS = [
     "AIzaSyA6Zh5GVB24w7bloM99lfgBhANbMeLO1SM",
     "AIzaSyA6Zh5GVB24w7bloM99lfgBhANbMeLO1SM",
@@ -11,34 +16,56 @@ const GOOGLE_API_KEYS = [
 ];
 let currentKeyIndex = 0;
 
-// API key rotate function
 function getApiKey() {
     const key = GOOGLE_API_KEYS[currentKeyIndex];
     currentKeyIndex = (currentKeyIndex + 1) % GOOGLE_API_KEYS.length;
     return key;
 }
 
-// WhatsApp Client Setup (Termux Safe)
+// ---------------------
+// Puppeteer Chromium Path for Termux
+// ---------------------
+let chromiumPath;
+if (os.platform() === 'android') {
+    chromiumPath = '/data/data/com.termux/files/usr/bin/chromium';
+    if (!fs.existsSync(chromiumPath)) {
+        console.error("❌ Chromium nahi mila. Install karo: pkg install chromium");
+        process.exit(1);
+    }
+} else {
+    chromiumPath = undefined; // Default path for other OS
+}
+
+// ---------------------
+// WhatsApp Client
+// ---------------------
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
+        executablePath: chromiumPath,
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
     }
 });
 
-// QR Generate
+// ---------------------
+// QR Code
+// ---------------------
 client.on('qr', qr => {
     console.log("📌 QR code scan karo:");
     qrcode.generate(qr, { small: true });
 });
 
+// ---------------------
 // Bot Ready
+// ---------------------
 client.on('ready', () => {
     console.log('✅ WhatsApp Bot Ready!');
 });
 
+// ---------------------
 // Message Listener
+// ---------------------
 client.on('message', async msg => {
     console.log(`📩 ${msg.from}: ${msg.body}`);
 
@@ -71,4 +98,7 @@ client.on('message', async msg => {
     }
 });
 
+// ---------------------
+// Initialize Client
+// ---------------------
 client.initialize();
