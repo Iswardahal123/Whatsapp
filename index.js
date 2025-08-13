@@ -1,73 +1,77 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
 const fetch = require('node-fetch');
+const qrcode = require('qrcode');
+const express = require('express');
 
-// Yaha apni saari Google API keys add karo
+// Google API keys (multiple)
 const API_KEYS = [
     "AIzaSyA6Zh5GVB24w7bloM99lfgBhANbMeLO1SM",
-    "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",
-    
+    "AIzaSyA6Zh5GVB24w7bloM99lfgBhANbMeLO1SM",
+    "AIzaSyA6Zh5GVB24w7bloM99lfgBhANbMeLO1SM"
 ];
-
 let currentKeyIndex = 0;
+function getApiKey() {
+    const key = API_KEYS[currentKeyIndex];
+    currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
+    return key;
+}
 
-// WhatsApp Client setup
+const app = express();
+let qrImageData = null; // QR store karenge
+
 const client = new Client({
     authStrategy: new LocalAuth()
 });
 
-client.on('qr', qr => {
-    console.log("📌 QR code scan karo:");
-    qrcode.generate(qr, { small: true });
+client.on('qr', async qr => {
+    console.log("📌 QR code ready, image generate ho rahi hai...");
+    qrImageData = await qrcode.toDataURL(qr); // PNG base64
 });
 
 client.on('ready', () => {
     console.log('✅ Bot Ready!');
 });
 
-async function getReplyFromGemini(prompt) {
-    let reply = "⚠ Error: Koi reply nahi mila.";
-    let triedKeys = 0;
-
-    while (triedKeys < API_KEYS.length) {
-        const apiKey = API_KEYS[currentKeyIndex];
-        console.log(`🔑 Trying API Key: ${apiKey}`);
-
-        try {
-            const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: prompt }] }]
-                    })
-                }
-            );
-            const data = await response.json();
-
-            if (data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-                reply = data.candidates[0].content.parts[0].text;
-                break; // Success, loop se nikal jao
-            } else {
-                console.warn(`⚠ Key failed: ${apiKey}`);
-            }
-        } catch (err) {
-            console.error(`❌ Error with key ${apiKey}:`, err);
-        }
-
-        // Next key try karo
-        currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
-        triedKeys++;
-    }
-
-    return reply;
-}
-
 client.on('message', async msg => {
     console.log(`📩 ${msg.from}: ${msg.body}`);
-    const reply = await getReplyFromGemini(msg.body);
-    msg.reply(reply);
+
+    const prompt = msg.body;
+    try {
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${getApiKey()}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }]
+                })
+            }
+        );
+        const data = await response.json();
+        let reply = "⚠ Error: Koi reply nahi mila.";
+
+        if (data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+            reply = data.candidates[0].content.parts[0].text;
+        }
+
+        msg.reply(reply);
+    } catch (err) {
+        console.error("❌ Error:", err);
+        msg.reply("❌ Reply generate karte waqt error aayi.");
+    }
+});
+
+// QR serve karne ka route
+app.get('/', (req, res) => {
+    if (qrImageData) {
+        res.send(`<img src="${qrImageData}" />`);
+    } else {
+        res.send("QR abhi ready nahi hai. Thoda wait karo...");
+    }
+});
+
+app.listen(3000, () => {
+    console.log("🌐 Web server started on port 3000");
 });
 
 client.initialize();
