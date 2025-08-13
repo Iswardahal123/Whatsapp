@@ -29,9 +29,11 @@ app.get('/qr', (req, res) => {
     }
 });
 
-// Start Express server
-app.listen(PORT, () => {
+// Start Express server (Render requires binding to 0.0.0.0)
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📡 Health check: http://0.0.0.0:${PORT}/`);
+    console.log(`📱 QR Code: http://0.0.0.0:${PORT}/qr`);
 });
 
 // ---------------------
@@ -99,6 +101,87 @@ async function startBot() {
         client.onMessage(async msg => {
             // Ignore messages from status updates and groups (optional)
             if (msg.isGroupMsg || msg.from === 'status@broadcast') {
+                return;
+            }
+
+            console.log(`📩 ${msg.from}: ${msg.body}`);
+
+            const prompt = msg.body.trim();
+            
+            // Ignore empty messages
+            if (!prompt) return;
+
+            try {
+                const apiKey = getApiKey();
+                const response = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }],
+                            generationConfig: {
+                                temperature: 0.7,
+                                topK: 40,
+                                topP: 0.95,
+                                maxOutputTokens: 1024,
+                            }
+                        })
+                    }
+                );
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                let reply = "⚠ Error: No response received.";
+
+                if (data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+                    reply = data.candidates[0].content.parts[0].text;
+                } else if (data?.error) {
+                    reply = `❌ API Error: ${data.error.message}`;
+                }
+
+                await client.sendText(msg.from, reply);
+
+            } catch (err) {
+                console.error("❌ Error:", err);
+                await client.sendText(msg.from, "❌ Sorry, there was an error processing your message.");
+            }
+        });
+
+        // Handle disconnection
+        client.onStateChanged((state) => {
+            console.log('📱 WhatsApp State:', state);
+            if (state === 'CONFLICT' || state === 'DISCONNECTED') {
+                console.log('🔄 Attempting to restart...');
+            }
+        });
+
+    } catch (err) {
+        console.error("❌ Bot initialization failed:", err);
+        // Restart after 30 seconds
+        setTimeout(() => {
+            console.log("🔄 Restarting bot...");
+            startBot();
+        }, 30000);
+    }
+}
+
+// Start the bot
+startBot();
+
+// Handle process termination
+process.on('SIGINT', () => {
+    console.log('👋 Bot shutting down...');
+    process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+    console.log('👋 Bot shutting down...');
+    process.exit(0);
+});            if (msg.isGroupMsg || msg.from === 'status@broadcast') {
                 return;
             }
 
