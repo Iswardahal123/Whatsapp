@@ -10,7 +10,7 @@ const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 // Initialize WhatsApp client
 const client = new Client({
     authStrategy: new LocalAuth({
-        dataPath: './whatsapp-session'
+        dataPath: './session'
     }),
     puppeteer: {
         headless: true,
