@@ -1,29 +1,23 @@
 {
   "name": "whatsapp-gemini-bot",
   "version": "1.0.0",
-  "description": "WhatsApp bot powered by Google Gemini AI",
+  "description": "WhatsApp bot with Google Gemini AI integration for Render deployment",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js"
   },
-  "keywords": [
-    "whatsapp",
-    "bot",
-    "gemini",
-    "ai",
-    "chatbot"
-  ],
-  "author": "",
+  "keywords": ["whatsapp", "bot", "gemini", "ai", "render"],
+  "author": "Your Name",
   "license": "MIT",
   "dependencies": {
-    "whatsapp-web.js": "^1.23.0",
-    "@google/generative-ai": "^0.17.1",
-    "qrcode-terminal": "^0.12.0",
-    "dotenv": "^16.4.5"
+    "@open-wa/wa-automate": "^4.60.0",
+    "express": "^4.18.2",
+    "node-fetch": "^2.7.0",
+    "qrcode": "^1.5.3"
   },
   "devDependencies": {
-    "nodemon": "^3.0.3"
+    "nodemon": "^3.0.1"
   },
   "engines": {
     "node": ">=18.0.0"
