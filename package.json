@@ -1,21 +1,32 @@
 {
-  "name": "whatsapp-bot-simple",
+  "name": "whatsapp-bot",
   "version": "1.0.0",
-  "description": "Simple WhatsApp Bot for specific number only",
+  "description": "Personal WhatsApp Bot with AI responses",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "build": "npm install",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "keywords": [
+    "whatsapp",
+    "bot",
+    "ai",
+    "gemini"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
   "dependencies": {
+    "whatsapp-web.js": "^1.23.0",
     "express": "^4.18.2",
-    "whatsapp-web.js": "^1.21.0",
     "qrcode": "^1.5.3",
-    "googleapis": "^118.0.0",
-    "axios": "^1.4.0",
-    "dotenv": "^16.0.3",
+    "axios": "^1.6.0",
     "cors": "^2.8.5",
-    "puppeteer": "^21.0.0"
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
   },
   "engines": {
     "node": ">=16.0.0"
