@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: whatsapp-gemini-bot
+    runtime: docker
+    plan: starter
+    region: oregon
+    branch: main
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: true
+      - key: PUPPETEER_EXECUTABLE_PATH
+        value: /usr/bin/google-chrome-stable
+      - key: GOOGLE_API_KEY_1
+        sync: false  # You'll set this manually in Render dashboard
+      - key: GOOGLE_API_KEY_2
+        sync: false  # Optional
+      - key: GOOGLE_API_KEY_3
+        sync: false  # Optional
