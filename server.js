@@ -20,24 +20,37 @@ const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 
 // Render-specific Chrome configuration
 const getChromeExecutablePath = () => {
+    const fs = require('fs');
+    
     // Try different possible Chrome paths on Render
     const possiblePaths = [
         process.env.GOOGLE_CHROME_BIN,
-        '/opt/render/project/.render/chrome/opt/google/chrome/chrome',
         '/usr/bin/google-chrome-stable',
         '/usr/bin/google-chrome',
         '/usr/bin/chromium-browser',
-        '/snap/bin/chromium'
+        '/usr/bin/chromium',
+        '/snap/bin/chromium',
+        '/opt/google/chrome/chrome',
+        '/opt/render/project/.render/chrome/opt/google/chrome/chrome'
     ];
     
     for (const path of possiblePaths) {
         if (path) {
-            console.log(`Trying Chrome path: ${path}`);
-            return path;
+            try {
+                // Check if the file exists and is executable
+                if (fs.existsSync(path)) {
+                    console.log(`✅ Found Chrome at: ${path}`);
+                    return path;
+                } else {
+                    console.log(`❌ Chrome not found at: ${path}`);
+                }
+            } catch (error) {
+                console.log(`❌ Error checking path ${path}:`, error.message);
+            }
         }
     }
     
-    console.log('Using default Chrome path');
+    console.log('⚠️ Using default Chrome path (let Puppeteer auto-detect)');
     return undefined;
 };
 
@@ -70,7 +83,6 @@ const client = new Client({
             '--memory-pressure-off',
             '--max_old_space_size=4096',
             '--disable-background-networking',
-            '--disable-background-timer-throttling',
             '--disable-client-side-phishing-detection',
             '--disable-default-apps',
             '--disable-hang-monitor',
@@ -82,7 +94,11 @@ const client = new Client({
             '--safebrowsing-disable-auto-update',
             '--enable-automation',
             '--password-store=basic',
-            '--use-mock-keychain'
+            '--use-mock-keychain',
+            '--disable-blink-features=AutomationControlled',
+            '--ignore-certificate-errors',
+            '--ignore-ssl-errors',
+            '--ignore-certificate-errors-spki-list'
         ]
     }
 });
