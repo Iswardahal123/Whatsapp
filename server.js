@@ -2,7 +2,6 @@
 const express = require('express');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
-const { google } = require('googleapis');
 const axios = require('axios');
 require('dotenv').config();
 const cors = require('cors');
@@ -19,13 +18,13 @@ app.use(express.static('public'));
 const ALLOWED_NUMBER = '919365374458'; // Only this number can get replies
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || 'AIzaSyA6Zh5GVB24w7bloM99lfgBhANbMeLO1SM';
 
-// WhatsApp Client Setup
+// WhatsApp Client Setup with Render-compatible config
 const client = new Client({
     authStrategy: new LocalAuth({
-        clientId: "whatsapp-bot-simple"
+        clientId: "whatsapp-bot-render"
     }),
     puppeteer: {
-        headless: "new",
+        headless: true,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -42,24 +41,33 @@ const client = new Client({
             '--disable-features=TranslateUI',
             '--disable-ipc-flooding-protection',
             '--disable-web-security',
-            '--disable-features=VizDisplayCompositor'
-        ]
+            '--disable-features=VizDisplayCompositor',
+            '--memory-pressure-off',
+            '--max_old_space_size=4096'
+        ],
+        executablePath: process.env.GOOGLE_CHROME_BIN || undefined
     }
 });
 
 // Store QR code and client state
 let qrCodeString = '';
 let isClientReady = false;
+let initializationError = null;
 
 // WhatsApp Client Events
 client.on('qr', async (qr) => {
     console.log('QR Code received');
-    qrCodeString = await qrcode.toDataURL(qr);
+    try {
+        qrCodeString = await qrcode.toDataURL(qr);
+    } catch (error) {
+        console.error('Error generating QR code:', error);
+    }
 });
 
 client.on('ready', () => {
     console.log('WhatsApp Client is ready!');
     isClientReady = true;
+    initializationError = null;
 });
 
 client.on('authenticated', () => {
@@ -68,6 +76,7 @@ client.on('authenticated', () => {
 
 client.on('auth_failure', (msg) => {
     console.error('Authentication failed:', msg);
+    initializationError = 'Authentication failed';
 });
 
 client.on('disconnected', (reason) => {
@@ -134,7 +143,8 @@ async function getGoogleAIResponse(userMessage) {
             {
                 headers: {
                     'Content-Type': 'application/json',
-                }
+                },
+                timeout: 30000 // 30 second timeout
             }
         );
 
@@ -168,11 +178,13 @@ app.get('/', (req, res) => {
         <html>
             <head>
                 <title>Personal WhatsApp Bot</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <style>
                     body { 
                         font-family: Arial, sans-serif; 
                         text-align: center; 
-                        margin-top: 50px; 
+                        margin: 0;
+                        padding: 20px;
                         background-color: #f0f0f0;
                     }
                     .container {
@@ -190,17 +202,43 @@ app.get('/', (req, res) => {
                     }
                     .ready { background-color: #d4edda; color: #155724; }
                     .initializing { background-color: #fff3cd; color: #856404; }
+                    .error { background-color: #f8d7da; color: #721c24; }
+                    .qr-code {
+                        margin: 20px 0;
+                        padding: 20px;
+                        border: 1px solid #ddd;
+                        border-radius: 8px;
+                        background: #f8f9fa;
+                    }
+                    .qr-code img {
+                        max-width: 300px;
+                        width: 100%;
+                        height: auto;
+                    }
+                    @media (max-width: 768px) {
+                        .container {
+                            margin: 10px;
+                            padding: 20px;
+                        }
+                        .qr-code img {
+                            max-width: 250px;
+                        }
+                    }
                 </style>
             </head>
             <body>
                 <div class="container">
                     <h1>🤖 Personal WhatsApp Bot</h1>
                     <p><strong>Authorized Number:</strong> +${ALLOWED_NUMBER}</p>
-                    <div class="status ${isClientReady ? 'ready' : 'initializing'}">
-                        ${isClientReady ? '✅ Bot is Ready!' : '⏳ Initializing...'}
+                    <div class="status ${isClientReady ? 'ready' : initializationError ? 'error' : 'initializing'}">
+                        ${isClientReady ? '✅ Bot is Ready!' : 
+                          initializationError ? `❌ ${initializationError}` : 
+                          '⏳ Initializing...'}
                     </div>
                     <div id="status"></div>
                     <p><small>This bot only responds to the authorized number above.</small></p>
+                    ${process.env.NODE_ENV === 'production' ? 
+                        '<p><small>Running on Render.com</small>' : ''}
                 </div>
                 
                 <script>
@@ -208,12 +246,22 @@ app.get('/', (req, res) => {
                         try {
                             const response = await fetch('/status');
                             const data = await response.json();
-                            document.getElementById('status').innerHTML = 
-                                data.ready ? '<p style="color: green; font-weight: bold;">✅ Bot is Active</p>' : 
-                                data.qr ? '<div><p><strong>Scan this QR code with WhatsApp:</strong></p><img src="' + data.qr + '" alt="QR Code" style="max-width: 300px; border: 1px solid #ddd; padding: 10px;"></div>' :
-                                '<p style="color: orange;">⏳ Starting up...</p>';
+                            let statusHtml = '';
+                            
+                            if (data.ready) {
+                                statusHtml = '<p style="color: green; font-weight: bold;">✅ Bot is Active</p>';
+                            } else if (data.error) {
+                                statusHtml = '<p style="color: red; font-weight: bold;">❌ ' + data.error + '</p>';
+                            } else if (data.qr) {
+                                statusHtml = '<div class="qr-code"><p><strong>Scan this QR code with WhatsApp:</strong></p><img src="' + data.qr + '" alt="QR Code"></div>';
+                            } else {
+                                statusHtml = '<p style="color: orange;">⏳ Starting up...</p>';
+                            }
+                            
+                            document.getElementById('status').innerHTML = statusHtml;
                         } catch (error) {
                             console.error('Error fetching status:', error);
+                            document.getElementById('status').innerHTML = '<p style="color: red;">❌ Connection Error</p>';
                         }
                     }, 3000);
                 </script>
@@ -226,7 +274,8 @@ app.get('/status', (req, res) => {
     res.json({
         ready: isClientReady,
         qr: qrCodeString,
-        authorizedNumber: ALLOWED_NUMBER
+        authorizedNumber: ALLOWED_NUMBER,
+        error: initializationError
     });
 });
 
@@ -235,7 +284,8 @@ app.get('/health', (req, res) => {
         status: 'ok', 
         ready: isClientReady,
         authorizedNumber: ALLOWED_NUMBER,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        error: initializationError
     });
 });
 
@@ -244,19 +294,25 @@ app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`📱 Authorized WhatsApp number: +${ALLOWED_NUMBER}`);
     console.log('🔄 Initializing WhatsApp client...');
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
     
     // Initialize WhatsApp client with error handling
-    client.initialize().catch(error => {
-        console.error('❌ Bot initialization failed:', error);
-    });
+    setTimeout(() => {
+        client.initialize().catch(error => {
+            console.error('❌ Bot initialization failed:', error);
+            initializationError = error.message;
+        });
+    }, 2000);
 });
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
     console.log('🛑 Shutting down gracefully...');
     try {
-        await client.destroy();
-        console.log('✅ WhatsApp client destroyed');
+        if (client) {
+            await client.destroy();
+            console.log('✅ WhatsApp client destroyed');
+        }
     } catch (error) {
         console.error('Error during shutdown:', error);
     }
@@ -266,10 +322,22 @@ process.on('SIGINT', async () => {
 process.on('SIGTERM', async () => {
     console.log('🛑 Shutting down gracefully...');
     try {
-        await client.destroy();
-        console.log('✅ WhatsApp client destroyed');
+        if (client) {
+            await client.destroy();
+            console.log('✅ WhatsApp client destroyed');
+        }
     } catch (error) {
         console.error('Error during shutdown:', error);
     }
     process.exit(0);
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
+    process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
