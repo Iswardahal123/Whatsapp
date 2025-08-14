@@ -1,299 +1,507 @@
-const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const qrcode = require('qrcode-terminal');
-require('dotenv').config();
+// index.js
+const wa = require('@open-wa/wa-automate');
+const fetch = require('node-fetch');
+const express = require('express');
+const QRCode = require('qrcode');
 
-// Initialize Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+// ---------------------
+// Express Server Setup (Required for Render)
+// ---------------------
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-// Initialize WhatsApp client
-const client = new Client({
-    authStrategy: new LocalAuth({
-        dataPath: './session'
-    }),
-    puppeteer: {
-        headless: true,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--single-process',
-            '--disable-gpu'
-        ],
-    }
+app.use(express.json());
+
+// Global variables for bot status
+global.qrCode = null;
+global.authenticated = false;
+global.botReady = false;
+global.botClient = null;
+
+// Health check endpoint with better styling
+app.get('/', (req, res) => {
+    res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>WhatsApp Gemini Bot</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+                body { 
+                    font-family: Arial, sans-serif; 
+                    text-align: center; 
+                    padding: 20px;
+                    background: linear-gradient(135deg, #25D366, #128C7E);
+                    color: white;
+                    min-height: 100vh;
+                    margin: 0;
+                }
+                .container {
+                    background: rgba(255,255,255,0.1);
+                    border-radius: 15px;
+                    padding: 40px;
+                    margin: 20px auto;
+                    max-width: 600px;
+                    backdrop-filter: blur(10px);
+                    border: 1px solid rgba(255,255,255,0.2);
+                }
+                h1 { font-size: 2.5em; margin-bottom: 10px; }
+                .status { font-size: 1.2em; margin: 20px 0; }
+                .timestamp { opacity: 0.8; font-size: 0.9em; }
+                .button {
+                    display: inline-block;
+                    background: white;
+                    color: #25D366;
+                    text-decoration: none;
+                    padding: 15px 30px;
+                    border-radius: 25px;
+                    font-weight: bold;
+                    margin: 10px;
+                    transition: transform 0.2s;
+                }
+                .button:hover { transform: scale(1.05); }
+                .status-indicator {
+                    display: inline-block;
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 50%;
+                    margin-right: 8px;
+                    background-color: ${global.botReady ? '#4CAF50' : '#FFC107'};
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>🤖 WhatsApp Gemini Bot</h1>
+                <div class="status">
+                    <span class="status-indicator"></span>
+                    ${global.botReady ? '✅ Bot is ready!' : '🔄 Bot is initializing...'}
+                </div>
+                <div class="timestamp">Server started: ${new Date().toISOString()}</div>
+                
+                <div style="margin-top: 30px;">
+                    <a href="/qr" class="button">📱 Get QR Code</a>
+                    <a href="/status" class="button">📊 Bot Status</a>
+                </div>
+                
+                <div style="margin-top: 30px; opacity: 0.9; font-size: 0.9em;">
+                    <p>🔗 ${global.authenticated ? 'WhatsApp Connected!' : 'Scan QR code to connect WhatsApp'}</p>
+                    <p>🤖 Send any message to get AI responses powered by Google Gemini</p>
+                </div>
+            </div>
+        </body>
+        </html>
+    `);
 });
 
-// Store conversation history for context
-const conversationHistory = new Map();
-const MAX_HISTORY = 10; // Keep last 10 messages for context
-
-// Bot configuration
-const BOT_CONFIG = {
-    prefix: '!',
-    adminNumbers: process.env.ADMIN_NUMBERS ? process.env.ADMIN_NUMBERS.split(',') : [],
-    responseDelay: 1000, // Delay before responding (in ms)
-    maxMessageLength: 2000,
-    enableGroupChat: process.env.ENABLE_GROUP_CHAT === 'true' || false
-};
-
-// Generate QR code
-client.on('qr', qr => {
-    console.log('📱 Scan the QR code below to connect WhatsApp:');
-    qrcode.generate(qr, { small: true });
+// Bot status endpoint
+app.get('/status', (req, res) => {
+    res.json({
+        status: global.botReady ? 'ready' : 'initializing',
+        timestamp: new Date().toISOString(),
+        qrCodeAvailable: !!global.qrCode,
+        authenticated: global.authenticated,
+        botReady: global.botReady,
+        uptime: process.uptime()
+    });
 });
 
-// Client ready
-client.on('ready', () => {
-    console.log('✅ WhatsApp Gemini Bot is ready!');
-    console.log('🤖 Bot Commands:');
-    console.log('   - Send any message to chat with AI');
-    console.log('   - !help - Show help menu');
-    console.log('   - !clear - Clear conversation history');
-    console.log('   - !ping - Test bot response');
-    console.log('   - !info - Bot information');
-});
-
-// Handle authentication
-client.on('auth_failure', msg => {
-    console.error('❌ Authentication failed:', msg);
-});
-
-client.on('authenticated', () => {
-    console.log('✅ WhatsApp Web authenticated successfully!');
-});
-
-// Handle disconnection
-client.on('disconnected', (reason) => {
-    console.log('❌ WhatsApp Web disconnected:', reason);
-    console.log('🔄 Attempting to reconnect...');
-});
-
-// Main message handler
-client.on('message', async msg => {
-    try {
-        // Skip messages from status broadcasts
-        if (msg.isStatus) return;
-
-        // Get chat and contact info
-        const chat = await msg.getChat();
-        const contact = await msg.getContact();
-        const isGroup = chat.isGroup;
-        const userId = contact.id.user;
-
-        console.log(`📩 Message from ${contact.name || contact.pushname || userId}: ${msg.body}`);
-
-        // Skip group messages if not enabled
-        if (isGroup && !BOT_CONFIG.enableGroupChat) {
-            return;
-        }
-
-        // Skip own messages
-        if (msg.fromMe) return;
-
-        // Handle commands
-        if (msg.body.startsWith(BOT_CONFIG.prefix)) {
-            await handleCommand(msg, chat, contact);
-            return;
-        }
-
-        // Skip empty messages or media without caption
-        if (!msg.body || msg.body.trim() === '') {
-            if (msg.hasMedia) {
-                await msg.reply('🖼️ I can see you sent media! Please add a caption or text with your question.');
-            }
-            return;
-        }
-
-        // Process AI response
-        await handleAIMessage(msg, chat, contact, userId);
-
-    } catch (error) {
-        console.error('❌ Error handling message:', error);
+// QR Code endpoint with HTML display
+app.get('/qr', async (req, res) => {
+    if (global.qrCode) {
         try {
-            await msg.reply('❌ Sorry, I encountered an error processing your message. Please try again.');
-        } catch (replyError) {
-            console.error('❌ Error sending error message:', replyError);
+            // Generate QR code as data URL
+            const qrDataURL = await QRCode.toDataURL(global.qrCode);
+            
+            res.send(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>WhatsApp Bot QR Code</title>
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <meta http-equiv="refresh" content="30">
+                    <style>
+                        body { 
+                            font-family: Arial, sans-serif; 
+                            text-align: center; 
+                            padding: 20px;
+                            background-color: #f5f5f5;
+                        }
+                        .container {
+                            background: white;
+                            border-radius: 10px;
+                            padding: 30px;
+                            margin: 20px auto;
+                            max-width: 500px;
+                            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                        }
+                        .qr-code {
+                            max-width: 300px;
+                            margin: 20px auto;
+                            padding: 20px;
+                            background: white;
+                            border-radius: 10px;
+                            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                        }
+                        h1 { color: #25D366; }
+                        .instructions {
+                            background: #e7f5e7;
+                            padding: 15px;
+                            border-radius: 5px;
+                            margin: 20px 0;
+                            text-align: left;
+                        }
+                        .refresh-info {
+                            background: #fff3cd;
+                            border: 1px solid #ffeaa7;
+                            color: #856404;
+                            padding: 10px;
+                            border-radius: 5px;
+                            margin: 15px 0;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h1>📱 WhatsApp Bot QR Code</h1>
+                        <div class="qr-code">
+                            <img src="${qrDataURL}" alt="QR Code" style="max-width: 100%; height: auto;">
+                        </div>
+                        <div class="instructions">
+                            <h3>How to connect:</h3>
+                            <ol>
+                                <li>Open WhatsApp on your phone</li>
+                                <li>Go to <strong>Settings</strong> > <strong>Linked Devices</strong></li>
+                                <li>Tap <strong>"Link a Device"</strong></li>
+                                <li>Scan this QR code with your phone</li>
+                            </ol>
+                        </div>
+                        <div class="refresh-info">
+                            <strong>⚠️ Auto-refresh:</strong> This page refreshes every 30 seconds
+                        </div>
+                        <button onclick="location.reload()" style="
+                            background: #25D366; 
+                            color: white; 
+                            border: none; 
+                            padding: 10px 20px; 
+                            border-radius: 5px; 
+                            cursor: pointer;
+                            font-size: 16px;
+                        ">🔄 Refresh Now</button>
+                    </div>
+                </body>
+                </html>
+            `);
+        } catch (error) {
+            console.error('Error generating QR code:', error);
+            res.status(500).send('Error generating QR code');
         }
+    } else {
+        res.send(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>WhatsApp Bot - No QR Code</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <meta http-equiv="refresh" content="10">
+                <style>
+                    body { 
+                        font-family: Arial, sans-serif; 
+                        text-align: center; 
+                        padding: 20px;
+                        background-color: #f5f5f5;
+                    }
+                    .container {
+                        background: white;
+                        border-radius: 10px;
+                        padding: 30px;
+                        margin: 20px auto;
+                        max-width: 500px;
+                        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    }
+                    .status {
+                        font-size: 1.1em;
+                        margin: 20px 0;
+                        color: ${global.authenticated ? '#4CAF50' : '#FF9800'};
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>📱 WhatsApp Bot</h1>
+                    <div class="status">
+                        ${global.authenticated ? '✅ Already authenticated!' : '🔄 Waiting for QR code...'}
+                    </div>
+                    <p>Current status:</p>
+                    <ul style="text-align: left; display: inline-block;">
+                        <li>Bot Ready: ${global.botReady ? '✅' : '❌'}</li>
+                        <li>Authenticated: ${global.authenticated ? '✅' : '❌'}</li>
+                        <li>QR Available: ${global.qrCode ? '✅' : '❌'}</li>
+                    </ul>
+                    <div style="margin-top: 20px;">
+                        <p><em>This page refreshes automatically every 10 seconds</em></p>
+                        <button onclick="location.reload()" style="
+                            background: #25D366; 
+                            color: white; 
+                            border: none; 
+                            padding: 10px 20px; 
+                            border-radius: 5px; 
+                            cursor: pointer;
+                            font-size: 16px;
+                        ">🔄 Refresh Now</button>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `);
     }
 });
 
-// Handle commands
-async function handleCommand(msg, chat, contact) {
-    const command = msg.body.toLowerCase();
-    const userId = contact.id.user;
+// ---------------------
+// Google API Keys (Use Environment Variables)
+// ---------------------
+const GOOGLE_API_KEYS = [
+    process.env.GOOGLE_API_KEY_1,
+    process.env.GOOGLE_API_KEY_2,
+    process.env.GOOGLE_API_KEY_3
+].filter(key => key); // Remove undefined keys
 
+// Fallback API key if no environment variables are set
+if (GOOGLE_API_KEYS.length === 0) {
+    console.warn('⚠️ No GOOGLE_API_KEY environment variables found. Please set them in Render dashboard.');
+    GOOGLE_API_KEYS.push('PLACEHOLDER_KEY'); // This will cause API calls to fail gracefully
+}
+
+let currentKeyIndex = 0;
+
+function getApiKey() {
+    const key = GOOGLE_API_KEYS[currentKeyIndex];
+    currentKeyIndex = (currentKeyIndex + 1) % GOOGLE_API_KEYS.length;
+    return key;
+}
+
+// ---------------------
+// WhatsApp Bot Functions
+// ---------------------
+async function startBot() {
     try {
-        switch (command) {
-            case '!help':
-                const helpMessage = `🤖 *WhatsApp Gemini AI Bot*
+        console.log('🤖 Initializing WhatsApp bot...');
+        
+        const client = await wa.create({
+            sessionId: "RenderBot",
+            multiDevice: true,
+            headless: true,
+            qrTimeout: 0,
+            authTimeout: 0,
+            blockCrashLogs: true,
+            disableSpins: true,
+            hostNotificationLang: 'en',
+            logConsole: false,
+            popup: false,
+            qrFormat: 'terminal',
+            sessionDataPath: './session',
+            useChrome: true,
+            chromiumArgs: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--single-process',
+                '--disable-gpu',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding',
+                '--disable-features=TranslateUI',
+                '--disable-ipc-flooding-protection'
+            ]
+        });
 
-*Available Commands:*
-• Send any message - Chat with AI
-• !help - Show this help menu
-• !clear - Clear your conversation history
-• !ping - Test bot response
-• !info - Bot information
+        global.botClient = client;
+        console.log("✅ WhatsApp Bot initialized!");
 
-*Tips:*
-• Ask questions in any language
-• Request explanations, summaries, or creative content
-• The bot remembers your last ${MAX_HISTORY} messages for context
+        // Handle QR Code for authentication
+        client.onQr((qrData) => {
+            console.log("📱 QR Code received! Visit /qr endpoint to scan it.");
+            global.qrCode = qrData;
+            global.authenticated = false;
+        });
 
-*Powered by Google Gemini AI* ✨`;
-                await msg.reply(helpMessage);
-                break;
+        // Handle authentication
+        client.onAuthenticated(() => {
+            console.log("🔐 WhatsApp Authenticated!");
+            global.qrCode = null;
+            global.authenticated = true;
+        });
 
-            case '!clear':
-                conversationHistory.delete(userId);
-                await msg.reply('🗑️ Your conversation history has been cleared!');
-                break;
+        // Handle when bot is ready
+        client.onReady(() => {
+            console.log("🎉 WhatsApp Bot is fully ready!");
+            global.botReady = true;
+        });
 
-            case '!ping':
-                const startTime = Date.now();
-                const reply = await msg.reply('🏓 Pong!');
-                const endTime = Date.now();
-                await client.sendMessage(msg.from, `⚡ Response time: ${endTime - startTime}ms`);
-                break;
+        // Listen for incoming messages
+        client.onMessage(async (msg) => {
+            // Ignore messages from status updates and groups (optional)
+            if (msg.isGroupMsg || msg.from === 'status@broadcast') {
+                return;
+            }
 
-            case '!info':
-                const info = await client.getState();
-                const infoMessage = `ℹ️ *Bot Information*
+            console.log(`📩 Message from ${msg.from}: ${msg.body}`);
 
-*Status:* Connected ✅
-*Platform:* WhatsApp Web
-*AI Model:* Google Gemini 1.5 Flash
-*Version:* 1.0.0
-*Uptime:* ${formatUptime(process.uptime())}
+            const prompt = msg.body.trim();
+            
+            // Ignore empty messages or commands
+            if (!prompt || prompt.startsWith('/')) return;
 
-*Features:*
-• Natural language processing
-• Context-aware conversations
-• Multi-language support
-• Command system`;
-                await msg.reply(infoMessage);
-                break;
+            try {
+                const apiKey = getApiKey();
+                
+                if (apiKey === 'PLACEHOLDER_KEY') {
+                    await client.sendText(msg.from, "❌ Bot configuration error: No valid API key found. Please contact the administrator.");
+                    return;
+                }
 
-            default:
-                await msg.reply('❓ Unknown command. Type !help to see available commands.');
-        }
-    } catch (error) {
-        console.error('❌ Error handling command:', error);
-        await msg.reply('❌ Error processing command. Please try again.');
+                console.log('🤖 Generating AI response...');
+                
+                const response = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }],
+                            generationConfig: {
+                                temperature: 0.7,
+                                topK: 40,
+                                topP: 0.95,
+                                maxOutputTokens: 1024,
+                            }
+                        }),
+                        timeout: 30000 // 30 second timeout
+                    }
+                );
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error(`API Error ${response.status}:`, errorText);
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                let reply = "⚠️ Sorry, I couldn't generate a response.";
+
+                if (data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+                    reply = data.candidates[0].content.parts[0].text;
+                } else if (data?.error) {
+                    reply = `❌ API Error: ${data.error.message}`;
+                    console.error('Gemini API Error:', data.error);
+                }
+
+                console.log('✅ Sending AI response');
+                await client.sendText(msg.from, reply);
+
+            } catch (err) {
+                console.error("❌ Error processing message:", err);
+                
+                let errorMsg = "❌ Sorry, I encountered an error processing your message.";
+                
+                if (err.message.includes('timeout')) {
+                    errorMsg = "⏱️ Request timed out. Please try again with a shorter message.";
+                } else if (err.message.includes('quota')) {
+                    errorMsg = "📊 API quota exceeded. Please try again later.";
+                }
+                
+                try {
+                    await client.sendText(msg.from, errorMsg);
+                } catch (sendErr) {
+                    console.error("❌ Failed to send error message:", sendErr);
+                }
+            }
+        });
+
+        // Handle disconnection
+        client.onStateChanged((state) => {
+            console.log('📱 WhatsApp State changed:', state);
+            if (state === 'CONFLICT') {
+                console.log('⚠️ WhatsApp Web session conflict detected');
+            } else if (state === 'DISCONNECTED') {
+                console.log('🔄 WhatsApp disconnected, will attempt to reconnect...');
+                global.authenticated = false;
+                global.botReady = false;
+            }
+        });
+
+        return client;
+
+    } catch (err) {
+        console.error("❌ Bot initialization failed:", err);
+        global.botReady = false;
+        global.authenticated = false;
+        
+        // Restart after delay
+        console.log("🔄 Restarting bot in 30 seconds...");
+        setTimeout(() => {
+            startBot();
+        }, 30000);
     }
 }
 
-// Handle AI messages
-async function handleAIMessage(msg, chat, contact, userId) {
-    try {
-        // Add typing indicator delay
-        await new Promise(resolve => setTimeout(resolve, BOT_CONFIG.responseDelay));
-
-        // Get or create conversation history
-        if (!conversationHistory.has(userId)) {
-            conversationHistory.set(userId, []);
-        }
-
-        const history = conversationHistory.get(userId);
-        const userMessage = msg.body.trim();
-
-        // Build context from conversation history
-        let contextPrompt = "You are a helpful WhatsApp AI assistant. Respond naturally and conversationally.\n\n";
-        
-        if (history.length > 0) {
-            contextPrompt += "Previous conversation:\n";
-            history.forEach((entry, index) => {
-                contextPrompt += `${entry.role}: ${entry.content}\n`;
-            });
-            contextPrompt += "\n";
-        }
-
-        contextPrompt += `Current message: ${userMessage}`;
-
-        // Generate AI response
-        const result = await model.generateContent(contextPrompt);
-        let aiResponse = result.response.text();
-
-        // Limit response length
-        if (aiResponse.length > BOT_CONFIG.maxMessageLength) {
-            aiResponse = aiResponse.substring(0, BOT_CONFIG.maxMessageLength - 50) + '...\n\n_Message truncated due to length_';
-        }
-
-        // Update conversation history
-        history.push({ role: 'User', content: userMessage });
-        history.push({ role: 'Assistant', content: aiResponse });
-
-        // Keep only last MAX_HISTORY messages
-        if (history.length > MAX_HISTORY * 2) {
-            history.splice(0, history.length - MAX_HISTORY * 2);
-        }
-
-        conversationHistory.set(userId, history);
-
-        // Send response
-        await msg.reply(aiResponse);
-
-        console.log(`✅ Sent AI response to ${contact.name || contact.pushname || userId}`);
-
-    } catch (error) {
-        console.error('❌ Error generating AI response:', error);
-        
-        let errorMessage = '❌ Sorry, I encountered an error while processing your message.';
-        
-        if (error.message.includes('API_KEY')) {
-            errorMessage += ' Please check the API key configuration.';
-        } else if (error.message.includes('quota')) {
-            errorMessage += ' API quota exceeded. Please try again later.';
-        } else {
-            errorMessage += ' Please try again or rephrase your message.';
-        }
-
-        await msg.reply(errorMessage);
+// ---------------------
+// Start Express Server FIRST (Critical for Render)
+// ---------------------
+const server = app.listen(PORT, '0.0.0.0', (err) => {
+    if (err) {
+        console.error('❌ Failed to start server:', err);
+        process.exit(1);
     }
-}
-
-// Utility function to format uptime
-function formatUptime(seconds) {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
+    console.log(`🚀 Express server running on 0.0.0.0:${PORT}`);
+    console.log(`📡 Health check: http://0.0.0.0:${PORT}/`);
+    console.log(`📱 QR Code: http://0.0.0.0:${PORT}/qr`);
+    console.log(`📊 Status: http://0.0.0.0:${PORT}/status`);
     
-    if (hours > 0) {
-        return `${hours}h ${minutes}m ${secs}s`;
-    } else if (minutes > 0) {
-        return `${minutes}m ${secs}s`;
-    } else {
-        return `${secs}s`;
+    // Start WhatsApp bot AFTER server is running
+    setTimeout(() => {
+        startBot();
+    }, 2000); // Give server time to fully start
+});
+
+// Graceful shutdown
+function gracefulShutdown(signal) {
+    console.log(`\n👋 Received ${signal}, shutting down gracefully...`);
+    
+    if (global.botClient) {
+        try {
+            global.botClient.kill();
+        } catch (err) {
+            console.error('Error closing WhatsApp client:', err);
+        }
     }
+    
+    server.close(() => {
+        console.log('✅ Server closed');
+        process.exit(0);
+    });
+    
+    // Force exit after 10 seconds
+    setTimeout(() => {
+        console.log('⚠️ Forcing exit after 10 seconds');
+        process.exit(1);
+    }, 10000);
 }
 
 // Handle process termination
-process.on('SIGINT', async () => {
-    console.log('\n🛑 Received SIGINT. Gracefully shutting down...');
-    await client.destroy();
-    process.exit(0);
-});
-
-process.on('SIGTERM', async () => {
-    console.log('\n🛑 Received SIGTERM. Gracefully shutting down...');
-    await client.destroy();
-    process.exit(0);
-});
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 // Handle unhandled errors
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+    console.error('❌ Unhandled Rejection:', reason);
+    // Don't crash the process for unhandled rejections
 });
 
 process.on('uncaughtException', (error) => {
     console.error('❌ Uncaught Exception:', error);
-    process.exit(1);
+    gracefulShutdown('UNCAUGHT_EXCEPTION');
 });
-
-// Initialize the client
-console.log('🚀 Starting WhatsApp Gemini Bot...');
-console.log('📋 Make sure to create a .env file with your GEMINI_API_KEY');
-client.initialize();
