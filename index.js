@@ -20,12 +20,12 @@ app.get('/', (req, res) => {
             <title>WhatsApp Gemini Bot</title>
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <style>
-                body { font-family: Arial, sans-serif; text-align: center; padding: 20px; background: linear-gradient(135deg, #25D366, #128C7E); color: white; min-height:100vh; margin:0; }
-                .container { background: rgba(255,255,255,0.1); border-radius: 15px; padding: 40px; margin: 20px auto; max-width:600px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); }
-                h1 { font-size: 2.5em; margin-bottom: 10px; }
-                .status { font-size:1.2em; margin: 20px 0; }
-                .timestamp { opacity: 0.8; font-size: 0.9em; }
-                .button { display: inline-block; background: white; color: #25D366; text-decoration:none; padding:15px 30px; border-radius:25px; font-weight:bold; margin:10px; transition: transform 0.2s; }
+                body { font-family: Arial, sans-serif; text-align:center; padding:20px; background:linear-gradient(135deg,#25D366,#128C7E); color:white; min-height:100vh; margin:0; }
+                .container { background: rgba(255,255,255,0.1); border-radius:15px; padding:40px; margin:20px auto; max-width:600px; backdrop-filter: blur(10px); border:1px solid rgba(255,255,255,0.2); }
+                h1 { font-size:2.5em; margin-bottom:10px; }
+                .status { font-size:1.2em; margin:20px 0; }
+                .timestamp { opacity:0.8; font-size:0.9em; }
+                .button { display:inline-block; background:white; color:#25D366; text-decoration:none; padding:15px 30px; border-radius:25px; font-weight:bold; margin:10px; transition:transform 0.2s; }
                 .button:hover { transform: scale(1.05); }
             </style>
         </head>
@@ -34,13 +34,9 @@ app.get('/', (req, res) => {
                 <h1>🤖 WhatsApp Gemini Bot</h1>
                 <div class="status">✅ Bot is running successfully!</div>
                 <div class="timestamp">Started: ${new Date().toISOString()}</div>
-                <div style="margin-top: 30px;">
+                <div style="margin-top:30px;">
                     <a href="/qr" class="button">📱 Get QR Code</a>
                     <a href="/status" class="button">📊 Bot Status</a>
-                </div>
-                <div style="margin-top:30px; opacity:0.9; font-size:0.9em;">
-                    <p>🔗 Scan the QR code to connect your WhatsApp</p>
-                    <p>🤖 Send any message to get AI responses powered by Google Gemini</p>
                 </div>
             </div>
         </body>
@@ -69,47 +65,38 @@ app.get('/qr', (req, res) => {
                 <title>WhatsApp Bot QR Code</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1">
                 <style>
-                    body { font-family: Arial, sans-serif; text-align: center; padding: 20px; background-color:#f5f5f5; }
+                    body { font-family: Arial, sans-serif; text-align:center; padding:20px; background:#f5f5f5; }
                     .container { background:white; border-radius:10px; padding:30px; margin:20px auto; max-width:500px; box-shadow:0 2px 10px rgba(0,0,0,0.1); }
                     .qr-code { max-width:300px; margin:20px auto; padding:20px; background:white; border-radius:10px; box-shadow:0 2px 5px rgba(0,0,0,0.1); }
-                    h1 { color: #25D366; }
-                    .instructions { background:#e7f5e7; padding:15px; border-radius:5px; margin:20px 0; text-align:left; }
+                    h1 { color:#25D366; }
                 </style>
             </head>
             <body>
                 <div class="container">
                     <h1>📱 WhatsApp Bot QR Code</h1>
                     <div class="qr-code">
-                        <img src="data:image/png;base64,${global.qrCode}" alt="QR Code" style="max-width:100%;height:auto;">
+                        <img src="data:image/png;base64,${global.qrCode}" alt="QR Code" style="max-width:100%; height:auto;">
                     </div>
-                    <div class="instructions">
-                        <h3>How to connect:</h3>
-                        <ol>
-                            <li>Open WhatsApp on your phone</li>
-                            <li>Go to <strong>Settings</strong> → <strong>Linked Devices</strong></li>
-                            <li>Tap <strong>"Link a Device"</strong></li>
-                            <li>Scan this QR code</li>
-                        </ol>
-                    </div>
-                    <button onclick="location.reload()" style="background:#25D366;color:white;border:none;padding:10px 20px;border-radius:5px;cursor:pointer;font-size:16px;">🔄 Refresh QR Code</button>
+                    <button onclick="location.reload()" style="background:#25D366; color:white; border:none; padding:10px 20px; border-radius:5px; cursor:pointer; font-size:16px;">🔄 Refresh QR Code</button>
                 </div>
             </body>
             </html>
         `);
     } else {
-        res.send(`<h1>QR Code not available yet. Please wait...</h1>`);
+        res.send('<h2>QR Code not available yet. Please refresh after a few seconds.</h2>');
     }
 });
 
 // ---------------------
-// Google API Keys directly in file
+// Google API Keys
 // ---------------------
 const GOOGLE_API_KEYS = [
     "AIzaSyA6Zh5GVB24w7bloM99lfgBhANbMeLO1SM",
-    "AIzaSyXXXXXXXXXXXXXX2",
-    "AIzaSyXXXXXXXXXXXXXX3"
+    "AIzaSyA6Zh5GVB24w7bloM99lfgBhANbMeLO1SM",
+    "AIzaSyA6Zh5GVB24w7bloM99lfgBhANbMeLO1SM"
 ];
 let currentKeyIndex = 0;
+
 function getApiKey() {
     const key = GOOGLE_API_KEYS[currentKeyIndex];
     currentKeyIndex = (currentKeyIndex + 1) % GOOGLE_API_KEYS.length;
@@ -117,7 +104,7 @@ function getApiKey() {
 }
 
 // ---------------------
-// WhatsApp Bot
+// WhatsApp Bot Function
 // ---------------------
 async function startBot() {
     try {
@@ -125,15 +112,15 @@ async function startBot() {
             sessionId: "RenderBot",
             multiDevice: true,
             headless: true,
-            qrTimeout:0,
-            authTimeout:0,
-            blockCrashLogs:true,
-            disableSpins:true,
-            logConsole:false,
-            popup:false,
-            qrFormat:'png',
-            sessionDataPath:'./session',
-            useChrome:true
+            qrTimeout: 0,
+            authTimeout: 0,
+            blockCrashLogs: true,
+            disableSpins: true,
+            logConsole: false,
+            popup: false,
+            qrFormat: 'png',
+            sessionDataPath: './session',
+            useChrome: true // Render friendly
         });
 
         console.log("✅ WhatsApp Bot Ready!");
@@ -156,52 +143,72 @@ async function startBot() {
         });
 
         client.onMessage(async (msg) => {
-            if(msg.isGroupMsg || msg.from==='status@broadcast') return;
+            if (msg.isGroupMsg || msg.from === 'status@broadcast') return;
 
             console.log(`📩 ${msg.from}: ${msg.body}`);
             const prompt = msg.body.trim();
-            if(!prompt) return;
+            if (!prompt) return;
 
             try {
                 const apiKey = getApiKey();
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
-                    method:'POST',
-                    headers:{'Content-Type':'application/json'},
-                    body:JSON.stringify({
-                        contents:[{parts:[{text:prompt}]}],
-                        generationConfig:{temperature:0.7, topK:40, topP:0.95, maxOutputTokens:1024}
-                    })
-                });
+                const response = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }],
+                            generationConfig: {
+                                temperature: 0.7,
+                                topK: 40,
+                                topP: 0.95,
+                                maxOutputTokens: 1024,
+                            }
+                        })
+                    }
+                );
 
-                if(!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
-                const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "⚠ No response from API";
+                let reply = "⚠ Error: No response received.";
+                if (data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+                    reply = data.candidates[0].content.parts[0].text;
+                } else if (data?.error) {
+                    reply = `❌ API Error: ${data.error.message}`;
+                }
                 await client.sendText(msg.from, reply);
 
-            } catch(err) {
+            } catch (err) {
                 console.error("❌ Error:", err);
-                await client.sendText(msg.from, "❌ Error processing your message.");
+                await client.sendText(msg.from, "❌ Sorry, there was an error processing your message.");
             }
         });
 
         client.onStateChanged((state) => {
             console.log('📱 WhatsApp State:', state);
+            if (state === 'CONFLICT' || state === 'DISCONNECTED') {
+                console.log('🔄 Attempting to restart...');
+            }
         });
 
-    } catch(err) {
-        console.error("❌ Bot init failed:", err);
-        setTimeout(startBot, 30000); // retry 30s
+    } catch (err) {
+        console.error("❌ Bot initialization failed:", err);
+        setTimeout(startBot, 30000);
     }
 }
 
 // ---------------------
-// Start Server & Bot
+// Start Express Server
 // ---------------------
-app.listen(PORT,'0.0.0.0',()=>{
-    console.log(`🚀 Server running on 0.0.0.0:${PORT}`);
+const server = app.listen(PORT, '0.0.0.0', (err) => {
+    if (err) {
+        console.error('❌ Failed to start server:', err);
+        process.exit(1);
+    }
+    console.log(`🚀 Express server running on 0.0.0.0:${PORT}`);
     startBot();
 });
 
-// Graceful shutdown
-process.on('SIGINT',()=>process.exit(0));
-process.on('SIGTERM',()=>process.exit(0));
+// Handle shutdown
+process.on('SIGINT', () => { console.log('👋 Bot shutting down...'); server.close(() => process.exit(0)); });
+process.on('SIGTERM', () => { console.log('👋 Bot shutting down...'); server.close(() => process.exit(0)); });
