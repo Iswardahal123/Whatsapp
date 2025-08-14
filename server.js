@@ -55,15 +55,10 @@ const getChromeExecutablePath = () => {
 };
 
 // WhatsApp Client Setup optimized for Render
-const client = new Client({
-    authStrategy: new LocalAuth({
-        clientId: "whatsapp-bot-render",
-        dataPath: './.wwebjs_auth'
-    }),
-    puppeteer: {
-        headless: true,
-        executablePath: getChromeExecutablePath(),
-        args: [
+const chromeExecutablePath = getChromeExecutablePath();
+const puppeteerConfig = {
+    headless: true,
+    args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
@@ -95,12 +90,24 @@ const client = new Client({
             '--enable-automation',
             '--password-store=basic',
             '--use-mock-keychain',
-            '--disable-blink-features=AutomationControlled',
-            '--ignore-certificate-errors',
-            '--ignore-ssl-errors',
-            '--ignore-certificate-errors-spki-list'
-        ]
-    }
+        '--disable-blink-features=AutomationControlled',
+        '--ignore-certificate-errors',
+        '--ignore-ssl-errors',
+        '--ignore-certificate-errors-spki-list'
+    ]
+};
+
+// Only set executablePath if we found a valid Chrome installation
+if (chromeExecutablePath) {
+    puppeteerConfig.executablePath = chromeExecutablePath;
+}
+
+const client = new Client({
+    authStrategy: new LocalAuth({
+        clientId: "whatsapp-bot-render",
+        dataPath: './.wwebjs_auth'
+    }),
+    puppeteer: puppeteerConfig
 });
 
 // Store QR code and client state
@@ -432,15 +439,21 @@ app.get('/health', (req, res) => {
 const initializeClient = async () => {
     try {
         console.log('🔄 Starting WhatsApp client initialization...');
-        console.log(`Chrome executable path: ${getChromeExecutablePath()}`);
+        console.log(`Chrome executable path: ${chromeExecutablePath || 'auto-detect'}`);
         console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
         console.log(`Google API Key configured: ${!!GOOGLE_API_KEY}`);
+        console.log(`PUPPETEER_EXECUTABLE_PATH: ${process.env.PUPPETEER_EXECUTABLE_PATH || 'not set'}`);
         
         await client.initialize();
         console.log('✅ Client initialization completed');
     } catch (error) {
         console.error('❌ Client initialization failed:', error);
         initializationError = error.message;
+        
+        // If Chrome path was the issue, suggest fix
+        if (error.message.includes('PUPPETEER_EXECUTABLE_PATH')) {
+            console.log('💡 Suggestion: Remove PUPPETEER_EXECUTABLE_PATH environment variable and let Puppeteer auto-detect Chrome');
+        }
     }
 };
 
