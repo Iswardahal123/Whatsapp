@@ -18,6 +18,9 @@ app.use(express.static('public'));
 const ALLOWED_NUMBER = '919365374458'; // Only this number can get replies
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 
+// Install Puppeteer's Chromium if needed
+const puppeteer = require('puppeteer');
+
 // Render-specific Chrome configuration
 const getChromeExecutablePath = () => {
     const fs = require('fs');
@@ -439,21 +442,15 @@ app.get('/health', (req, res) => {
 const initializeClient = async () => {
     try {
         console.log('🔄 Starting WhatsApp client initialization...');
-        console.log(`Chrome executable path: ${chromeExecutablePath || 'auto-detect'}`);
         console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
         console.log(`Google API Key configured: ${!!GOOGLE_API_KEY}`);
-        console.log(`PUPPETEER_EXECUTABLE_PATH: ${process.env.PUPPETEER_EXECUTABLE_PATH || 'not set'}`);
+        console.log('📦 Using Puppeteer bundled Chromium');
         
         await client.initialize();
         console.log('✅ Client initialization completed');
     } catch (error) {
         console.error('❌ Client initialization failed:', error);
         initializationError = error.message;
-        
-        // If Chrome path was the issue, suggest fix
-        if (error.message.includes('PUPPETEER_EXECUTABLE_PATH')) {
-            console.log('💡 Suggestion: Remove PUPPETEER_EXECUTABLE_PATH environment variable and let Puppeteer auto-detect Chrome');
-        }
     }
 };
 
