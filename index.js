@@ -120,7 +120,8 @@ async function startBot() {
             popup: false,
             qrFormat: 'png',
             sessionDataPath: './session',
-            useChrome: true // Render friendly
+            useChrome: true, // Render friendly
+            executablePath: "/usr/bin/chromium" // Explicit path for Render
         });
 
         console.log("✅ WhatsApp Bot Ready!");
