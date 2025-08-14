@@ -1,7 +1,7 @@
 {
-  "name": "whatsapp-bot",
+  "name": "whatsapp-bot-simple",
   "version": "1.0.0",
-  "description": "WhatsApp Bot with Google APIs",
+  "description": "Simple WhatsApp Bot for specific number only",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -14,10 +14,8 @@
     "googleapis": "^118.0.0",
     "axios": "^1.4.0",
     "dotenv": "^16.0.3",
-    "cors": "^2.8.5"
-  },
-  "devDependencies": {
-    "nodemon": "^2.0.22"
+    "cors": "^2.8.5",
+    "puppeteer": "^21.0.0"
   },
   "engines": {
     "node": ">=16.0.0"
