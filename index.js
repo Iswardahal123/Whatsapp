@@ -2,7 +2,6 @@
 const wa = require('@open-wa/wa-automate');
 const fetch = require('node-fetch');
 const express = require('express');
-const path = require('path');
 
 // ---------------------
 // Express Server Setup (Required for Render)
@@ -46,22 +45,6 @@ function getApiKey() {
 }
 
 // ---------------------
-// Start Express Server FIRST (Critical for Render)
-// ---------------------
-const server = app.listen(PORT, '0.0.0.0', (err) => {
-    if (err) {
-        console.error('❌ Failed to start server:', err);
-        process.exit(1);
-    }
-    console.log(`🚀 Express server running on 0.0.0.0:${PORT}`);
-    console.log(`📡 Health check: http://0.0.0.0:${PORT}/`);
-    console.log(`📱 QR Code: http://0.0.0.0:${PORT}/qr`);
-    
-    // Start WhatsApp bot AFTER server is running
-    startBot();
-});
-
-// ---------------------
 // WhatsApp Bot Functions
 // ---------------------
 async function startBot() {
@@ -99,6 +82,115 @@ async function startBot() {
             global.qrCode = qrData;
             console.log("📱 QR Code received! Visit /qr endpoint to get it.");
         });
+
+        // Handle authentication
+        client.onAuthenticated(() => {
+            console.log("🔐 WhatsApp Authenticated!");
+            global.qrCode = null;
+        });
+
+        // Listen for incoming messages
+        client.onMessage(async msg => {
+            // Ignore messages from status updates and groups (optional)
+            if (msg.isGroupMsg || msg.from === 'status@broadcast') {
+                return;
+            }
+
+            console.log(`📩 ${msg.from}: ${msg.body}`);
+
+            const prompt = msg.body.trim();
+            
+            // Ignore empty messages
+            if (!prompt) return;
+
+            try {
+                const apiKey = getApiKey();
+                const response = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }],
+                            generationConfig: {
+                                temperature: 0.7,
+                                topK: 40,
+                                topP: 0.95,
+                                maxOutputTokens: 1024,
+                            }
+                        })
+                    }
+                );
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                let reply = "⚠ Error: No response received.";
+
+                if (data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+                    reply = data.candidates[0].content.parts[0].text;
+                } else if (data?.error) {
+                    reply = `❌ API Error: ${data.error.message}`;
+                }
+
+                await client.sendText(msg.from, reply);
+
+            } catch (err) {
+                console.error("❌ Error:", err);
+                await client.sendText(msg.from, "❌ Sorry, there was an error processing your message.");
+            }
+        });
+
+        // Handle disconnection
+        client.onStateChanged((state) => {
+            console.log('📱 WhatsApp State:', state);
+            if (state === 'CONFLICT' || state === 'DISCONNECTED') {
+                console.log('🔄 Attempting to restart...');
+            }
+        });
+
+    } catch (err) {
+        console.error("❌ Bot initialization failed:", err);
+        // Restart after 30 seconds
+        setTimeout(() => {
+            console.log("🔄 Restarting bot...");
+            startBot();
+        }, 30000);
+    }
+}
+
+// ---------------------
+// Start Express Server FIRST (Critical for Render)
+// ---------------------
+const server = app.listen(PORT, '0.0.0.0', (err) => {
+    if (err) {
+        console.error('❌ Failed to start server:', err);
+        process.exit(1);
+    }
+    console.log(`🚀 Express server running on 0.0.0.0:${PORT}`);
+    console.log(`📡 Health check: http://0.0.0.0:${PORT}/`);
+    console.log(`📱 QR Code: http://0.0.0.0:${PORT}/qr`);
+    
+    // Start WhatsApp bot AFTER server is running
+    startBot();
+});
+
+// Handle process termination
+process.on('SIGINT', () => {
+    console.log('👋 Bot shutting down...');
+    server.close(() => {
+        process.exit(0);
+    });
+});
+
+process.on('SIGTERM', () => {
+    console.log('👋 Bot shutting down...');
+    server.close(() => {
+        process.exit(0);
+    });
+});        });
 
         // Handle authentication
         client.onAuthenticated(() => {
