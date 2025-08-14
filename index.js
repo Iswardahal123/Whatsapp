@@ -287,10 +287,38 @@ async function startBot() {
     try {
         console.log('🤖 Initializing WhatsApp bot...');
         
+        // Try to find Chrome executable
+        const possiblePaths = [
+            process.env.PUPPETEER_EXECUTABLE_PATH,
+            process.env.CHROME_BIN,
+            '/usr/bin/google-chrome-stable',
+            '/usr/bin/google-chrome',
+            '/usr/bin/chromium-browser',
+            '/usr/bin/chromium'
+        ].filter(Boolean);
+
+        let chromePath = null;
+        for (const path of possiblePaths) {
+            try {
+                const fs = require('fs');
+                if (fs.existsSync(path)) {
+                    chromePath = path;
+                    console.log(`✅ Found Chrome at: ${path}`);
+                    break;
+                }
+            } catch (err) {
+                // Continue trying other paths
+            }
+        }
+
+        if (!chromePath) {
+            console.log('⚠️ No Chrome found, using default Puppeteer');
+        }
+        
         const client = await wa.create({
             sessionId: "RenderBot",
             multiDevice: true,
-            headless: true,
+            headless: "new",
             qrTimeout: 0,
             authTimeout: 0,
             blockCrashLogs: true,
@@ -300,7 +328,8 @@ async function startBot() {
             popup: false,
             qrFormat: 'terminal',
             sessionDataPath: './session',
-            useChrome: true,
+            useChrome: !!chromePath,
+            executablePath: chromePath,
             chromiumArgs: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -313,9 +342,35 @@ async function startBot() {
                 '--disable-background-timer-throttling',
                 '--disable-backgrounding-occluded-windows',
                 '--disable-renderer-backgrounding',
-                '--disable-features=TranslateUI',
-                '--disable-ipc-flooding-protection'
-            ]
+                '--disable-features=TranslateUI,VizDisplayCompositor',
+                '--disable-ipc-flooding-protection',
+                '--memory-pressure-off',
+                '--max_old_space_size=4096',
+                '--disable-extensions',
+                '--disable-plugins',
+                '--disable-images',
+                '--disable-javascript',
+                '--disable-default-apps',
+                '--disable-sync'
+            ],
+            // Add Puppeteer launch options for better Render compatibility
+            puppeteerOptions: {
+                headless: "new",
+                executablePath: chromePath,
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-accelerated-2d-canvas',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--single-process',
+                    '--disable-gpu',
+                    '--disable-web-security',
+                    '--disable-features=VizDisplayCompositor',
+                    '--memory-pressure-off'
+                ]
+            }
         });
 
         global.botClient = client;
