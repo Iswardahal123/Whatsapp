@@ -2,7 +2,7 @@
   "name": "whatsapp-bot",
   "version": "1.0.0",
   "description": "WhatsApp Bot with Google APIs",
-  "main": "server.js",/
+  "main": "index.js"
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js"
