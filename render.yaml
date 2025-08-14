@@ -5,13 +5,8 @@ services:
     buildCommand: npm install
     startCommand: npm start
     plan: free
-    autoDeploy: false
     envVars:
       - key: NODE_ENV
         value: production
-      - key: GOOGLE_API_KEY
-        sync: false
       - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
         value: true
-      - key: GOOGLE_CHROME_BIN
-        value: /usr/bin/google-chrome-stable
