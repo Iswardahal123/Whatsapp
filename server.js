@@ -1,4 +1,4 @@
-// server.js
+// Updated server.js with Render-specific fixes
 const express = require('express');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
@@ -7,7 +7,7 @@ require('dotenv').config();
 const cors = require('cors');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000; // Use 10000 to match your log
 
 // Middleware
 app.use(express.json());
@@ -15,7 +15,7 @@ app.use(cors());
 app.use(express.static('public'));
 
 // Configuration
-const ALLOWED_NUMBER = '919365374458'; // Only this number can get replies
+const ALLOWED_NUMBER = '919365374458';
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 
 // Load Chrome configuration
@@ -26,60 +26,56 @@ try {
     const configPath = path.join(__dirname, 'chrome-config.json');
     if (fs.existsSync(configPath)) {
         chromeConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        console.log('📍 Loaded Chrome config:', chromeConfig.executablePath ? 'Found' : 'Not found');
+        console.log('📍 Loaded Chrome config:', chromeConfig.executablePath ? 'Custom path found' : 'Using default');
     }
 } catch (error) {
-    console.log('⚠️ No Chrome config found, using defaults');
+    console.log('⚠️ No Chrome config found, will try auto-detection');
 }
 
-// Render-specific Chrome configuration
-const getChromeExecutablePath = () => {
-    const fs = require('fs');
+// Render-optimized Puppeteer configuration
+const getPuppeteerConfig = () => {
+    const isProduction = process.env.NODE_ENV === 'production';
     
-    // Try different possible Chrome paths on Render
-    const possiblePaths = [
-        process.env.GOOGLE_CHROME_BIN,
-        '/usr/bin/google-chrome-stable',
-        '/usr/bin/google-chrome',
-        '/usr/bin/chromium-browser',
-        '/usr/bin/chromium',
-        '/snap/bin/chromium',
-        '/opt/google/chrome/chrome',
-        '/opt/render/project/.render/chrome/opt/google/chrome/chrome'
-    ];
-    
-    for (const path of possiblePaths) {
-        if (path) {
-            try {
-                // Check if the file exists and is executable
-                if (fs.existsSync(path)) {
-                    console.log(`✅ Found Chrome at: ${path}`);
-                    return path;
-                } else {
-                    console.log(`❌ Chrome not found at: ${path}`);
-                }
-            } catch (error) {
-                console.log(`❌ Error checking path ${path}:`, error.message);
+    // Try to find Chrome executable
+    const findChrome = () => {
+        const fs = require('fs');
+        
+        // Check config file first
+        if (chromeConfig.executablePath && fs.existsSync(chromeConfig.executablePath)) {
+            console.log(`✅ Using Chrome from config: ${chromeConfig.executablePath}`);
+            return chromeConfig.executablePath;
+        }
+        
+        // Try common paths
+        const paths = [
+            process.env.GOOGLE_CHROME_BIN,
+            '/opt/render/.cache/puppeteer/chrome/linux-1108766/chrome',
+            '/usr/bin/chromium-browser',
+            '/usr/bin/chromium',
+            '/usr/bin/google-chrome-stable',
+            '/usr/bin/google-chrome'
+        ].filter(Boolean);
+        
+        for (const path of paths) {
+            if (fs.existsSync(path)) {
+                console.log(`✅ Found Chrome at: ${path}`);
+                return path;
             }
         }
-    }
+        
+        console.log('⚠️ No Chrome executable found, using Puppeteer bundled');
+        return null;
+    };
     
-    console.log('⚠️ Using default Chrome path (let Puppeteer auto-detect)');
-    return undefined;
-};
-
-// WhatsApp Client Setup optimized for Render
-const chromeExecutablePath = getChromeExecutablePath();
-const puppeteerConfig = {
-    headless: true,
-    args: [
+    const config = {
+        headless: "new",
+        args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--single-process',
             '--disable-gpu',
             '--disable-extensions',
             '--disable-background-timer-throttling',
@@ -90,7 +86,6 @@ const puppeteerConfig = {
             '--disable-web-security',
             '--disable-features=VizDisplayCompositor',
             '--memory-pressure-off',
-            '--max_old_space_size=4096',
             '--disable-background-networking',
             '--disable-client-side-phishing-detection',
             '--disable-default-apps',
@@ -104,24 +99,36 @@ const puppeteerConfig = {
             '--enable-automation',
             '--password-store=basic',
             '--use-mock-keychain',
-        '--disable-blink-features=AutomationControlled',
-        '--ignore-certificate-errors',
-        '--ignore-ssl-errors',
-        '--ignore-certificate-errors-spki-list'
-    ]
-};
+            '--disable-blink-features=AutomationControlled',
+            '--ignore-certificate-errors',
+            '--ignore-ssl-errors',
+            '--ignore-certificate-errors-spki-list'
+        ]
+    };
 
-// Only set executablePath if we found a valid Chrome installation
-if (chromeExecutablePath) {
-    puppeteerConfig.executablePath = chromeExecutablePath;
-}
+    if (isProduction) {
+        config.args.push(
+            '--single-process',
+            '--disable-gpu-sandbox'
+        );
+    }
+
+    // Set executable path if found
+    const chromePath = findChrome();
+    if (chromePath) {
+        config.executablePath = chromePath;
+    }
+
+    console.log(`🔧 Puppeteer config: ${chromePath ? 'Custom Chrome' : 'Bundled Chrome'}`);
+    return config;
+};
 
 const client = new Client({
     authStrategy: new LocalAuth({
         clientId: "whatsapp-bot-render",
         dataPath: './.wwebjs_auth'
     }),
-    puppeteer: puppeteerConfig
+    puppeteer: getPuppeteerConfig()
 });
 
 // Store QR code and client state
@@ -133,46 +140,42 @@ const MAX_CONNECTION_ATTEMPTS = 3;
 
 // WhatsApp Client Events
 client.on('qr', async (qr) => {
-    console.log('QR Code received');
+    console.log('📱 QR Code received');
     try {
         qrCodeString = await qrcode.toDataURL(qr);
-        console.log('QR Code generated successfully');
+        console.log('✅ QR Code generated successfully');
     } catch (error) {
-        console.error('Error generating QR code:', error);
-        initializationError = 'Failed to generate QR code';
+        console.error('❌ Error generating QR code:', error);
+        initializationError = 'Failed to generate QR code: ' + error.message;
     }
 });
 
 client.on('ready', () => {
-    console.log('WhatsApp Client is ready!');
+    console.log('✅ WhatsApp Client is ready!');
     isClientReady = true;
     initializationError = null;
     connectionAttempts = 0;
 });
 
 client.on('authenticated', () => {
-    console.log('WhatsApp Client authenticated');
+    console.log('🔐 WhatsApp Client authenticated');
 });
 
 client.on('auth_failure', (msg) => {
-    console.error('Authentication failed:', msg);
+    console.error('❌ Authentication failed:', msg);
     initializationError = 'Authentication failed: ' + msg;
 });
 
 client.on('disconnected', (reason) => {
-    console.log('WhatsApp Client was logged out:', reason);
+    console.log('🔌 WhatsApp Client was logged out:', reason);
     isClientReady = false;
     
-    // Attempt to reconnect
     if (connectionAttempts < MAX_CONNECTION_ATTEMPTS) {
         connectionAttempts++;
-        console.log(`Attempting to reconnect... (${connectionAttempts}/${MAX_CONNECTION_ATTEMPTS})`);
+        console.log(`🔄 Attempting to reconnect... (${connectionAttempts}/${MAX_CONNECTION_ATTEMPTS})`);
         setTimeout(() => {
-            client.initialize().catch(error => {
-                console.error('Reconnection failed:', error);
-                initializationError = 'Reconnection failed: ' + error.message;
-            });
-        }, 5000);
+            initializeClient();
+        }, 10000); // Longer delay for reconnection
     } else {
         initializationError = 'Maximum reconnection attempts reached';
     }
@@ -182,41 +185,36 @@ client.on('disconnected', (reason) => {
 client.on('message', async (message) => {
     try {
         const chat = await message.getChat();
-        
-        // Get the sender's number (remove @ and domain part)
         const senderNumber = message.from.split('@')[0];
         
-        console.log(`Message from ${senderNumber}: ${message.body}`);
+        console.log(`📨 Message from ${senderNumber}: ${message.body}`);
         
-        // Only respond to the allowed number and not to group messages or status
         if (senderNumber !== ALLOWED_NUMBER || chat.isGroup || message.isStatus) {
-            console.log(`Ignoring message from ${senderNumber} (not authorized)`);
+            console.log(`🚫 Ignoring message from ${senderNumber} (not authorized)`);
             return;
         }
         
-        // Don't respond to empty messages
         if (!message.body || message.body.trim() === '') {
             return;
         }
         
-        console.log(`Processing message from authorized number: ${message.body}`);
+        console.log(`✅ Processing message from authorized number: ${message.body}`);
         
-        // Get AI response using Google Generative AI
         const aiResponse = await getGoogleAIResponse(message.body);
         
         if (aiResponse) {
             await message.reply(aiResponse);
-            console.log(`Replied to ${senderNumber}: ${aiResponse.substring(0, 100)}...`);
+            console.log(`✅ Replied to ${senderNumber}: ${aiResponse.substring(0, 100)}...`);
         } else {
             await message.reply('Sorry, I couldn\'t process your message right now. Please try again later.');
         }
         
     } catch (error) {
-        console.error('Error handling message:', error);
+        console.error('❌ Error handling message:', error);
         try {
             await message.reply('Sorry, I encountered an error. Please try again.');
         } catch (replyError) {
-            console.error('Error sending error reply:', replyError);
+            console.error('❌ Error sending error reply:', replyError);
         }
     }
 });
@@ -224,7 +222,7 @@ client.on('message', async (message) => {
 // Function to get AI response from Google Generative AI (Gemini)
 async function getGoogleAIResponse(userMessage) {
     if (!GOOGLE_API_KEY) {
-        console.error('Google API Key not configured');
+        console.error('❌ Google API Key not configured');
         return 'Sorry, AI service is not configured properly.';
     }
     
@@ -242,7 +240,7 @@ async function getGoogleAIResponse(userMessage) {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                timeout: 30000 // 30 second timeout
+                timeout: 30000
             }
         );
 
@@ -250,14 +248,13 @@ async function getGoogleAIResponse(userMessage) {
             const aiText = response.data.candidates[0].content.parts[0].text;
             return aiText;
         } else {
-            console.error('Unexpected API response structure:', response.data);
+            console.error('❌ Unexpected API response structure:', response.data);
             return 'Sorry, I couldn\'t generate a response right now.';
         }
 
     } catch (error) {
-        console.error('Google AI API Error:', error.response?.data || error.message);
+        console.error('❌ Google AI API Error:', error.response?.data || error.message);
         
-        // Fallback responses
         const fallbackResponses = [
             "Thanks for your message! I'm here to help.",
             "I received your message. How can I assist you today?",
@@ -270,7 +267,7 @@ async function getGoogleAIResponse(userMessage) {
     }
 }
 
-// API Routes
+// API Routes (keeping your existing routes)
 app.get('/', (req, res) => {
     res.send(`
         <html>
@@ -449,31 +446,31 @@ app.get('/health', (req, res) => {
     });
 });
 
-// Initialize client after server starts
+// Improved client initialization
 const initializeClient = async () => {
     try {
         console.log('🔄 Starting WhatsApp client initialization...');
         console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
         console.log(`Google API Key configured: ${!!GOOGLE_API_KEY}`);
-        console.log(`Chrome path: ${chromeConfig.executablePath || 'auto-detect'}`);
-        console.log(`Cache directory: ${chromeConfig.cacheDir || process.env.PUPPETEER_CACHE_DIR || 'default'}`);
+        
+        // Reset state
+        initializationError = null;
+        isClientReady = false;
+        qrCodeString = '';
         
         await client.initialize();
-        console.log('✅ Client initialization completed');
+        console.log('✅ Client initialization completed successfully');
     } catch (error) {
         console.error('❌ Client initialization failed:', error);
         initializationError = error.message;
         
-        // Suggest installing Chrome manually if it failed
+        // More specific error handling
         if (error.message.includes('Could not find Chromium')) {
-            console.log('💡 Trying to install Chrome manually...');
-            try {
-                const { installChrome } = require('./install-chrome.js');
-                await installChrome();
-                console.log('🔄 Chrome installed, please restart the service');
-            } catch (installError) {
-                console.error('❌ Failed to install Chrome:', installError.message);
-            }
+            initializationError = 'Chromium installation failed. Please check Render deployment.';
+            console.log('💡 Solution: Make sure puppeteer is properly installed in package.json');
+        } else if (error.message.includes('Navigation timeout')) {
+            initializationError = 'WhatsApp web loading timeout. Retrying...';
+            setTimeout(() => initializeClient(), 15000);
         }
     }
 };
@@ -483,8 +480,8 @@ app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`📱 Authorized WhatsApp number: +${ALLOWED_NUMBER}`);
     
-    // Initialize client after a short delay
-    setTimeout(initializeClient, 2000);
+    // Initialize client after server is ready
+    setTimeout(initializeClient, 3000);
 });
 
 // Graceful shutdown
@@ -496,7 +493,7 @@ const gracefulShutdown = async (signal) => {
             console.log('✅ WhatsApp client destroyed');
         }
     } catch (error) {
-        console.error('Error during shutdown:', error);
+        console.error('❌ Error during shutdown:', error);
     }
     process.exit(0);
 };
@@ -506,11 +503,11 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
-    console.error('Uncaught Exception:', error);
+    console.error('❌ Uncaught Exception:', error);
     initializationError = 'Uncaught exception: ' + error.message;
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
     initializationError = 'Unhandled rejection: ' + reason;
 });
