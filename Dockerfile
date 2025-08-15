@@ -1,49 +1,50 @@
-FROM node:18-slim
+# Use Node.js with Chrome pre-installed
+FROM ghcr.io/puppeteer/puppeteer:21.5.2
 
-# Install dependencies for Chrome
-RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
-    ca-certificates \
-    procps \
-    libxss1 \
-    libgconf-2-4 \
-    libxrandr2 \
-    libasound2 \
-    libpangocairo-1.0-0 \
-    libatk1.0-0 \
-    libcairo-gobject2 \
-    libgtk-3-0 \
-    libgdk-pixbuf2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Chrome
-RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
-    && apt-get update \
-    && apt-get install -y google-chrome-stable \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set Chrome path
-ENV GOOGLE_CHROME_BIN=/usr/bin/google-chrome-stable
-
-# Create app directory
+# Set working directory
 WORKDIR /usr/src/app
+
+# Switch to root to install dependencies
+USER root
+
+# Install additional dependencies if needed
+RUN apt-get update && apt-get install -y \
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libdrm2 \
+    libgtk-3-0 \
+    libu2f-udev \
+    libvulkan1 \
+    xdg-utils \
+    zip \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy package files
 COPY package*.json ./
 
-# Install npm dependencies
-RUN npm install --only=production
+# Install dependencies
+RUN npm ci --only=production
 
-# Copy app source
+# Copy application code
 COPY . .
 
-# Create directory for WhatsApp auth
-RUN mkdir -p .wwebjs_auth
+# Create necessary directories and set permissions
+RUN mkdir -p /usr/src/app/.wwebjs_auth && \
+    chown -R pptruser:pptruser /usr/src/app && \
+    chmod -R 755 /usr/src/app
+
+# Switch to non-root user
+USER pptruser
 
 # Expose port
-EXPOSE 3000
+EXPOSE 10000
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 
 # Start the application
 CMD ["npm", "start"]
