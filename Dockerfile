@@ -1,4 +1,3 @@
-# Use Node.js with Chrome pre-installed
 FROM node:18-slim
 
 # Install dependencies for Chrome
@@ -16,31 +15,7 @@ RUN apt-get update && apt-get install -y \
     libcairo-gobject2 \
     libgtk-3-0 \
     libgdk-pixbuf2.0-0 \
-    libxcomposite1 \
-    libxcursor1 \
-    libxdamage1 \
-    libxext6 \
-    libxfixes3 \
-    libxi6 \
-    libxrender1 \
-    libxtst6 \
-    libcups2 \
-    libdrm2 \
-    libgtk-3-0 \
-    libgtk2.0-0 \
-    libnotify4 \
-    libnss3 \
-    libxss1 \
-    libxtst6 \
-    xdg-utils \
-    libatspi2.0-0 \
-    libdrm2 \
-    libxkbcommon0 \
-    libepoxy0 \
-    libwayland-client0 \
-    libwayland-egl1 \
-    libwayland-server0 \
-    libxkbfile1
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Chrome
 RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
@@ -59,7 +34,7 @@ WORKDIR /usr/src/app
 COPY package*.json ./
 
 # Install npm dependencies
-RUN npm install
+RUN npm install --only=production
 
 # Copy app source
 COPY . .
