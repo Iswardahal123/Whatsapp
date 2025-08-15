@@ -2,11 +2,16 @@ services:
   - type: web
     name: whatsapp-bot
     env: node
-    buildCommand: npm install
+    region: oregon # or your preferred region
+    plan: starter # or your preferred plan
+    buildCommand: npm ci && npm run render-postbuild
     startCommand: npm start
-    plan: free
     envVars:
       - key: NODE_ENV
         value: production
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: false
       - key: PUPPETEER_CACHE_DIR
         value: /opt/render/.cache/puppeteer
+      - key: PUPPETEER_EXECUTABLE_PATH
+        value: /opt/render/.cache/puppeteer/chrome/linux-1108766/chrome
