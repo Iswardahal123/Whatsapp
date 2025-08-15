@@ -18,8 +18,19 @@ app.use(express.static('public'));
 const ALLOWED_NUMBER = '919365374458'; // Only this number can get replies
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 
-// Install Puppeteer's Chromium if needed
-const puppeteer = require('puppeteer');
+// Load Chrome configuration
+let chromeConfig = { executablePath: null, cacheDir: null };
+try {
+    const fs = require('fs');
+    const path = require('path');
+    const configPath = path.join(__dirname, 'chrome-config.json');
+    if (fs.existsSync(configPath)) {
+        chromeConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        console.log('📍 Loaded Chrome config:', chromeConfig.executablePath ? 'Found' : 'Not found');
+    }
+} catch (error) {
+    console.log('⚠️ No Chrome config found, using defaults');
+}
 
 // Render-specific Chrome configuration
 const getChromeExecutablePath = () => {
@@ -444,13 +455,26 @@ const initializeClient = async () => {
         console.log('🔄 Starting WhatsApp client initialization...');
         console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
         console.log(`Google API Key configured: ${!!GOOGLE_API_KEY}`);
-        console.log('📦 Using Puppeteer bundled Chromium');
+        console.log(`Chrome path: ${chromeConfig.executablePath || 'auto-detect'}`);
+        console.log(`Cache directory: ${chromeConfig.cacheDir || process.env.PUPPETEER_CACHE_DIR || 'default'}`);
         
         await client.initialize();
         console.log('✅ Client initialization completed');
     } catch (error) {
         console.error('❌ Client initialization failed:', error);
         initializationError = error.message;
+        
+        // Suggest installing Chrome manually if it failed
+        if (error.message.includes('Could not find Chromium')) {
+            console.log('💡 Trying to install Chrome manually...');
+            try {
+                const { installChrome } = require('./install-chrome.js');
+                await installChrome();
+                console.log('🔄 Chrome installed, please restart the service');
+            } catch (installError) {
+                console.error('❌ Failed to install Chrome:', installError.message);
+            }
+        }
     }
 };
 
